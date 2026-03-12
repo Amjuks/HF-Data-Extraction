@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 import time
 from typing import Any, Callable, Iterable
 
@@ -94,9 +95,16 @@ def retry(
             return func(*args, **kwargs)
         except Exception as exc:  # noqa: BLE001
             last_error = exc
-            logger.warning(f"Attempt {attempt}/{retries} failed: {exc}")
+            msg = str(exc).lower()
+            is_rate_limited = "rate limit" in msg or "too many requests" in msg or "429" in msg
+            reason = "rate-limited" if is_rate_limited else "failed"
+            logger.warning(f"Attempt {attempt}/{retries} {reason}: {exc}")
             if attempt < retries:
-                time.sleep(backoff_seconds * attempt)
+                delay = backoff_seconds * (2 ** (attempt - 1))
+                if is_rate_limited:
+                    delay *= 2
+                delay += random.uniform(0, 0.3)
+                time.sleep(delay)
     if last_error is not None:
         raise last_error
 

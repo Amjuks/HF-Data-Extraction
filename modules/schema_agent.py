@@ -9,6 +9,7 @@ from openai import OpenAI
 from pydantic import BaseModel, Field, ValidationError
 
 from config import SETTINGS
+from modules.utils import retry
 
 
 class SchemaDetection(BaseModel):
@@ -244,7 +245,13 @@ class SchemaAgent:
         )
 
         try:
-            text = self._invoke_llm(system_prompt=system_prompt, payload=prompt_payload).strip()
+            text = retry(
+                self._invoke_llm,
+                SETTINGS.max_retries,
+                SETTINGS.retry_backoff_seconds,
+                system_prompt,
+                prompt_payload,
+            ).strip()
             parsed = _try_json_extract(text)
             schema = SchemaDetection.model_validate(parsed)
             if not schema.is_codegen_dataset:

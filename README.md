@@ -57,6 +57,24 @@ Both CSV and Parquet:
 python pipeline.py --output-format both
 ```
 
+Resume from previous progress (default progress name):
+
+```bash
+python pipeline.py --resume
+```
+
+Resume from a named progress:
+
+```bash
+python pipeline.py --resume myrun
+```
+
+Start a new named progress (without resume):
+
+```bash
+python pipeline.py --progress-name myrun
+```
+
 ## Files You Get
 
 - `combined_dataset.csv` (if CSV mode is enabled)
@@ -108,6 +126,13 @@ python deduplicate.py --input combined_dataset.parquet --output combined_dataset
 
 It also includes error messages when something fails.
 
+For named progress runs, files are automatically suffixed, for example:
+
+- `combined_dataset_myrun.csv`
+- `combined_dataset_myrun.parquet`
+- `pipeline_progress_log_myrun.csv`
+- `.pipeline_checkpoint_myrun.json`
+
 ## Optional Settings
 
 ```env
@@ -125,3 +150,5 @@ Notes:
 - Leave `MAX_ROWS_PER_DATASET` empty to process full datasets.
 - If `LLM_API_KEY` is missing, pipeline still runs with fallback schema detection.
 - If `HF_API_KEY` (or `HUGGINGFACE_API_KEY` / `HF_TOKEN`) is set, it is used for Hugging Face dataset access. If not set, public datasets are loaded without auth.
+- API rate limits are retried automatically with exponential backoff for both OpenAI schema calls and Hugging Face dataset API calls.
+- Main output is deduplicated by default (`conversation + reasoning`). To disable: `--no-deduplicate`.
