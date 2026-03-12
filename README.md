@@ -1,85 +1,91 @@
 # Dataset Pipeline
 
-Production-ready Python pipeline to discover, classify, and normalize code-generation datasets from Hugging Face into a unified CSV format.
+This repo reads Hugging Face dataset IDs, detects code-generation data, converts it to a unified format, and writes output to CSV, Parquet, or both.
 
-## Features
+## Quick Start
 
-- Reads dataset IDs from `datasets.csv`
-- Detects dataset configs and splits
-- Loads Hugging Face datasets with streaming support
-- Samples rows and infers schema using an LLM
-- Classifies irrelevant datasets and skips them safely
-- Converts supported dataset shapes into a unified conversation schema
-- Writes output incrementally to `combined_dataset.csv`
-- Includes retries, validation, and robust fallbacks
-
-## Project Structure
-
-```text
-.
-  README.md
-  requirements.txt
-  config.py
-  datasets.csv
-  pipeline.py
-  modules/
-    __init__.py
-    csv_reader.py
-    csv_writer.py
-    dataset_loader.py
-    sample_extractor.py
-    schema_agent.py
-    dataset_classifier.py
-    dataset_converter.py
-    utils.py
-```
-
-## Setup
-
-1. Create and activate a virtual environment.
-2. Install dependencies:
+1. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Configure environment variables in a `.env` file:
+2. Create `.env`
 
-```bash
-MAX_SAMPLE_ROWS=12
-MAX_ROWS_PER_DATASET=
-OUTPUT_FILE=combined_dataset.csv
-MODEL_NAME=gpt-4o-mini
+```env
 LLM_API_KEY=your_key_here
-PROGRESS_LOG_EVERY=100
-FLUSH_EACH_RECORD=true
-# Optional:
-# LLM_BASE_URL=https://your-openai-compatible-endpoint
-# HF_STREAMING=true
-# DEFAULT_SPLIT=train
+MODEL_NAME=gpt-4o-mini
+
+OUTPUT_CSV_FILE=combined_dataset.csv
+OUTPUT_PARQUET_FILE=combined_dataset.parquet
+RUN_LOG_FILE=pipeline_progress_log.csv
 ```
 
-4. Edit `datasets.csv`:
+3. Add datasets to `datasets.csv`
 
 ```csv
 dataset_id
 iamtarun/python_code_instructions_18k_alpaca
 ```
 
-## Run
+4. Run
 
 ```bash
 python pipeline.py
 ```
 
-Output is written to:
+Default output is CSV.
 
-`combined_dataset.csv`
+## Output Options
 
-## Notes
+CSV only:
 
-- If `LLM_API_KEY` is not set or schema inference fails, the pipeline falls back to heuristic schema detection.
-- By default `MAX_ROWS_PER_DATASET` is unlimited (entire dataset is processed). Set it to a number only when you want to cap.
-- Output is appended incrementally and flushed per record (configurable), so `combined_dataset.csv` updates in real time.
-- In CSV, `conversation` and `metadata` are JSON-encoded strings.
+```bash
+python pipeline.py --output-format csv
+```
 
+Parquet only:
+
+```bash
+python pipeline.py --output-format parquet
+```
+
+Both CSV and Parquet:
+
+```bash
+python pipeline.py --output-format both
+```
+
+## Files You Get
+
+- `combined_dataset.csv` (if CSV mode is enabled)
+- `combined_dataset.parquet` (if Parquet mode is enabled)
+- `pipeline_progress_log.csv` (always written)
+
+## Progress Log (Important)
+
+`pipeline_progress_log.csv` shows what happened for each dataset:
+
+- `started`
+- `added`
+- `skipped`
+- `failed`
+
+It also includes error messages when something fails.
+
+## Optional Settings
+
+```env
+MAX_SAMPLE_ROWS=12
+MAX_ROWS_PER_DATASET=
+PROGRESS_LOG_EVERY=100
+PARQUET_BATCH_SIZE=1000
+WRITE_BATCH_SIZE=500
+HF_STREAMING=true
+DEFAULT_SPLIT=train
+```
+
+Notes:
+
+- Leave `MAX_ROWS_PER_DATASET` empty to process full datasets.
+- If `LLM_API_KEY` is missing, pipeline still runs with fallback schema detection.

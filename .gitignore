@@ -27,6 +27,8 @@ dist/
 # Data outputs
 combined_dataset.csv
 combined_dataset.jsonl
+combined_dataset.parquet
+pipeline_progress_log.csv
 *.log
 
 # OS / editor

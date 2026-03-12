@@ -21,7 +21,9 @@ def _int_or_none(name: str, default: str = "") -> int | None:
 class Settings:
     max_sample_rows: int = int(os.getenv("MAX_SAMPLE_ROWS", "12"))
     max_rows_per_dataset: int | None = _int_or_none("MAX_ROWS_PER_DATASET", "")
-    output_file: str = os.getenv("OUTPUT_FILE", "combined_dataset.csv")
+    output_csv_file: str = os.getenv("OUTPUT_CSV_FILE", "combined_dataset.csv")
+    output_parquet_file: str = os.getenv("OUTPUT_PARQUET_FILE", "combined_dataset.parquet")
+    run_log_file: str = os.getenv("RUN_LOG_FILE", "pipeline_progress_log.csv")
     model_name: str = os.getenv("MODEL_NAME", "gpt-4o-mini")
     llm_api_key: str = os.getenv("LLM_API_KEY", os.getenv("OPENAI_API_KEY", ""))
     llm_base_url: str | None = os.getenv("LLM_BASE_URL")
@@ -32,13 +34,20 @@ class Settings:
     default_split: str = os.getenv("DEFAULT_SPLIT", "train")
     csv_path: str = os.getenv("CSV_PATH", "datasets.csv")
     progress_log_every: int = int(os.getenv("PROGRESS_LOG_EVERY", "100"))
-    flush_each_record: bool = os.getenv("FLUSH_EACH_RECORD", "true").lower() == "true"
+    parquet_batch_size: int = int(os.getenv("PARQUET_BATCH_SIZE", "1000"))
+    write_batch_size: int = int(os.getenv("WRITE_BATCH_SIZE", "500"))
 
-    def output_path(self, project_root: Path) -> Path:
-        return project_root / self.output_file
+    def output_csv_path(self, project_root: Path) -> Path:
+        return project_root / self.output_csv_file
+
+    def output_parquet_path(self, project_root: Path) -> Path:
+        return project_root / self.output_parquet_file
 
     def csv_file_path(self, project_root: Path) -> Path:
         return project_root / self.csv_path
+
+    def run_log_path(self, project_root: Path) -> Path:
+        return project_root / self.run_log_file
 
 
 SETTINGS = Settings()

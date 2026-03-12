@@ -5,3 +5,4 @@ tqdm>=4.66.0
 openai>=1.40.0
 python-dotenv>=1.0.0
 loguru>=0.7.0
+pyarrow>=17.0.0
