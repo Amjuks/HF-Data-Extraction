@@ -105,16 +105,7 @@ class SchemaAgent:
         )
 
         try:
-            response = self.client.responses.create(
-                model=SETTINGS.model_name,
-                input=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": json.dumps(prompt_payload, ensure_ascii=False)},
-                ],
-                temperature=0,
-                max_output_tokens=400,
-            )
-            text = response.output_text.strip()
+            text = self._invoke_llm(system_prompt=system_prompt, payload=prompt_payload).strip()
             parsed = json.loads(text)
             schema = SchemaDetection.model_validate(parsed)
             if not schema.is_codegen_dataset:
@@ -130,3 +121,33 @@ class SchemaAgent:
             logger.warning(f"[{dataset_id}] Schema inference failed: {exc}. Falling back to heuristic.")
             return _heuristic_schema(columns)
 
+    def _invoke_llm(self, system_prompt: str, payload: dict[str, Any]) -> str:
+        assert self.client is not None
+        user_content = json.dumps(payload, ensure_ascii=False)
+
+        # Newer OpenAI SDK interface.
+        if hasattr(self.client, "responses"):
+            response = self.client.responses.create(
+                model=SETTINGS.model_name,
+                input=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                temperature=0,
+                max_output_tokens=400,
+            )
+            return response.output_text
+
+        # Backward-compatible fallback for older OpenAI SDKs.
+        completion = self.client.chat.completions.create(
+            model=SETTINGS.model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=0,
+            max_tokens=400,
+            response_format={"type": "json_object"},
+        )
+        content = completion.choices[0].message.content
+        return content or "{}"
