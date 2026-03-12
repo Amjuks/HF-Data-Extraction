@@ -27,6 +27,7 @@ class Settings:
     model_name: str = os.getenv("MODEL_NAME", "gpt-4o-mini")
     llm_api_key: str = os.getenv("LLM_API_KEY", os.getenv("OPENAI_API_KEY", ""))
     llm_base_url: str | None = os.getenv("LLM_BASE_URL")
+    hf_api_key: str = os.getenv("HF_API_KEY", os.getenv("HUGGINGFACE_API_KEY", os.getenv("HF_TOKEN", "")))
     request_timeout_seconds: int = int(os.getenv("LLM_TIMEOUT_SECONDS", "40"))
     max_retries: int = int(os.getenv("MAX_RETRIES", "3"))
     retry_backoff_seconds: float = float(os.getenv("RETRY_BACKOFF_SECONDS", "1.5"))

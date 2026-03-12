@@ -15,6 +15,7 @@ pip install -r requirements.txt
 ```env
 LLM_API_KEY=your_key_here
 MODEL_NAME=gpt-4o-mini
+HF_API_KEY=your_huggingface_token_optional
 
 OUTPUT_CSV_FILE=combined_dataset.csv
 OUTPUT_PARQUET_FILE=combined_dataset.parquet
@@ -89,3 +90,4 @@ Notes:
 
 - Leave `MAX_ROWS_PER_DATASET` empty to process full datasets.
 - If `LLM_API_KEY` is missing, pipeline still runs with fallback schema detection.
+- If `HF_API_KEY` (or `HUGGINGFACE_API_KEY` / `HF_TOKEN`) is set, it is used for Hugging Face dataset access. If not set, public datasets are loaded without auth.

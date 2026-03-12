@@ -17,8 +17,19 @@ class DatasetLoadInfo:
     columns: list[str]
 
 
+def _with_optional_token(func, *args, **kwargs):
+    token = SETTINGS.hf_api_key.strip()
+    if not token:
+        return func(*args, **kwargs)
+    try:
+        return func(*args, token=token, **kwargs)
+    except TypeError:
+        # Backward compatibility for older datasets versions.
+        return func(*args, use_auth_token=token, **kwargs)
+
+
 def _pick_split(dataset_id: str, config_name: str | None) -> str:
-    splits = get_dataset_split_names(path=dataset_id, config_name=config_name)
+    splits = _with_optional_token(get_dataset_split_names, path=dataset_id, config_name=config_name)
     if SETTINGS.default_split in splits:
         return SETTINGS.default_split
     if "train" in splits:
@@ -28,7 +39,7 @@ def _pick_split(dataset_id: str, config_name: str | None) -> str:
 
 def _pick_config(dataset_id: str) -> str | None:
     try:
-        configs = get_dataset_config_names(path=dataset_id)
+        configs = _with_optional_token(get_dataset_config_names, path=dataset_id)
     except Exception:  # noqa: BLE001
         return None
     if not configs:
@@ -38,9 +49,15 @@ def _pick_config(dataset_id: str) -> str | None:
 
 def _load_stream(dataset_id: str, config_name: str | None, split_name: str) -> IterableDataset:
     if config_name:
-        ds = load_dataset(dataset_id, name=config_name, split=split_name, streaming=SETTINGS.streaming)
+        ds = _with_optional_token(
+            load_dataset,
+            dataset_id,
+            name=config_name,
+            split=split_name,
+            streaming=SETTINGS.streaming,
+        )
     else:
-        ds = load_dataset(dataset_id, split=split_name, streaming=SETTINGS.streaming)
+        ds = _with_optional_token(load_dataset, dataset_id, split=split_name, streaming=SETTINGS.streaming)
     if not isinstance(ds, IterableDataset) and SETTINGS.streaming:
         ds = ds.to_iterable_dataset()
     return ds
@@ -65,4 +82,3 @@ def inspect_dataset(dataset_id: str) -> DatasetLoadInfo:
 
 def load_dataset_stream(dataset_id: str, config_name: str | None, split_name: str) -> IterableDataset:
     return retry(_load_stream, SETTINGS.max_retries, SETTINGS.retry_backoff_seconds, dataset_id, config_name, split_name)
-
