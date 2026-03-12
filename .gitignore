@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# Env vars / secrets
+.env
+.env.*
+!.env.example
+
+# Build / dist
+build/
+dist/
+
+# Data outputs
+combined_dataset.csv
+combined_dataset.jsonl
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
