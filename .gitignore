@@ -29,6 +29,7 @@ combined_dataset.csv
 combined_dataset.jsonl
 combined_dataset.parquet
 pipeline_progress_log.csv
+one_row_per_dataset_id.csv
 *.log
 
 # OS / editor

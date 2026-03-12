@@ -4,7 +4,7 @@ import pandas as pd
 df = pd.read_csv("combined_dataset.csv")
 
 # Print rows in original CSV
-print("Rows in combined_datasets.csv:", len(df))
+print("Rows in combined_dataset.csv:", len(df))
 
 # Get one row per dataset_id
 sample_df = df.drop_duplicates(subset="dataset_id")
