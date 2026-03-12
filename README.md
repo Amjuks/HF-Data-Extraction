@@ -63,6 +63,40 @@ python pipeline.py --output-format both
 - `combined_dataset.parquet` (if Parquet mode is enabled)
 - `pipeline_progress_log.csv` (always written)
 
+## Deduplicate Any CSV/Parquet
+
+Use:
+
+```bash
+python deduplicate.py --input your_file.csv
+```
+
+This creates `your_file_dedup.csv`.
+
+Parquet example:
+
+```bash
+python deduplicate.py --input your_file.parquet
+```
+
+Keep only unique prompt/response pairs:
+
+```bash
+python deduplicate.py --input combined_dataset.csv --subset conversation,reasoning --keep first
+```
+
+Case-insensitive dedup on selected columns:
+
+```bash
+python deduplicate.py --input combined_dataset.csv --subset conversation --ignore-case --strip-whitespace
+```
+
+Write to a custom file:
+
+```bash
+python deduplicate.py --input combined_dataset.parquet --output combined_dataset_dedup.parquet
+```
+
 ## Progress Log (Important)
 
 `pipeline_progress_log.csv` shows what happened for each dataset:
