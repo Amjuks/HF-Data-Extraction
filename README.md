@@ -1,6 +1,14 @@
 # Dataset Pipeline
 
-This repo reads Hugging Face dataset IDs, detects code-generation data, converts it to a unified format, and writes output to CSV, Parquet, or both.
+This repo reads Hugging Face datasets, checks whether they match a target domain, converts them to a unified conversation schema, and writes output to CSV, Parquet, or both.
+
+It now supports:
+
+- content-based schema detection for `code_generation`, `math`, and `natural_language`
+- nested conversation fields such as `conversations`, `messages`, or chat payloads stored inside JSON objects
+- parallel processing of multiple domains while throttling LLM schema-analysis calls
+- Hugging Face API throttling for config/split/dataset loading
+- a required `language` field in the normalized schema
 
 ## Quick Start
 
@@ -22,20 +30,56 @@ OUTPUT_PARQUET_FILE=combined_dataset.parquet
 RUN_LOG_FILE=pipeline_progress_log.csv
 ```
 
-3. Add datasets to `datasets.csv`
+3. Create one CSV per domain. Each CSV must contain a `link` column with a Hugging Face dataset URL.
+
+Example `code_generation.csv`:
 
 ```csv
-dataset_id
-iamtarun/python_code_instructions_18k_alpaca
+link
+https://huggingface.co/datasets/iamtarun/python_code_instructions_18k_alpaca
 ```
 
-4. Run
+4. Configure domains in `domains.json`
+
+```json
+{
+  "domains": [
+    {
+      "name": "code_generation",
+      "task_type": "code_generation",
+      "csv_path": "code_generation.csv"
+    },
+    {
+      "name": "math",
+      "task_type": "math",
+      "csv_path": "math.csv"
+    },
+    {
+      "name": "natural_language",
+      "task_type": "natural_language",
+      "csv_path": "natural_language.csv"
+    }
+  ]
+}
+```
+
+5. Run
 
 ```bash
 python pipeline.py
 ```
 
-Default output is CSV.
+Default output is CSV. Each domain writes its own output files, for example `combined_dataset_code_generation.csv` and `combined_dataset_math.csv`.
+
+Normalized output fields:
+
+- `conversation`
+- `language`
+- `reasoning`
+- `metadata`
+- `dataset_id`
+
+`language` is always normalized to lowercase English labels such as `english`, `hindi`, `spanish`, `multilingual`, or `unknown`.
 
 ## Output Options
 
@@ -55,6 +99,12 @@ Both CSV and Parquet:
 
 ```bash
 python pipeline.py --output-format both
+```
+
+Use a custom domain config file:
+
+```bash
+python pipeline.py --domains-config custom_domains.json
 ```
 
 Resume from previous progress (default progress name):
@@ -77,9 +127,11 @@ python pipeline.py --progress-name myrun
 
 ## Files You Get
 
-- `combined_dataset.csv` (if CSV mode is enabled)
-- `combined_dataset.parquet` (if Parquet mode is enabled)
-- `pipeline_progress_log.csv` (always written)
+- `combined_dataset_<domain>.csv` (if CSV mode is enabled)
+- `combined_dataset_<domain>.parquet` (if Parquet mode is enabled)
+- `pipeline_progress_log_<domain>.csv` (always written)
+- `.pipeline_checkpoint_<domain>_<progress>.json`
+- `.dataset_registry.json` for persistent dataset-level skip tracking across runs
 
 ## Deduplicate Any CSV/Parquet
 
@@ -117,7 +169,7 @@ python deduplicate.py --input combined_dataset.parquet --output combined_dataset
 
 ## Progress Log (Important)
 
-`pipeline_progress_log.csv` shows what happened for each dataset:
+Each domain log shows what happened for each dataset:
 
 - `started`
 - `added`
@@ -128,10 +180,10 @@ It also includes error messages when something fails.
 
 For named progress runs, files are automatically suffixed, for example:
 
-- `combined_dataset_myrun.csv`
-- `combined_dataset_myrun.parquet`
-- `pipeline_progress_log_myrun.csv`
-- `.pipeline_checkpoint_myrun.json`
+- `combined_dataset_code_generation_myrun.csv`
+- `combined_dataset_math_myrun.parquet`
+- `pipeline_progress_log_natural_language_myrun.csv`
+- `.pipeline_checkpoint_code_generation_myrun.json`
 
 ## Optional Settings
 
@@ -143,12 +195,25 @@ PARQUET_BATCH_SIZE=1000
 WRITE_BATCH_SIZE=500
 HF_STREAMING=true
 DEFAULT_SPLIT=train
+DOMAINS_CONFIG_PATH=domains.json
+MAX_PARALLEL_DOMAINS=3
+LLM_MAX_CONCURRENCY=2
+LLM_MIN_INTERVAL_SECONDS=0.0
+HF_MAX_CONCURRENCY=2
+HF_MIN_INTERVAL_SECONDS=0.2
 ```
 
 Notes:
 
 - Leave `MAX_ROWS_PER_DATASET` empty to process full datasets.
+- A domain entry can override `max_rows_per_dataset` for just that domain.
+- A domain entry can use `csv_path` with a `link` column, or `dataset_ids` for direct IDs.
+- Dataset links are normalized to canonical Hugging Face dataset IDs before processing.
 - If `LLM_API_KEY` is missing, pipeline still runs with fallback schema detection.
 - If `HF_API_KEY` (or `HUGGINGFACE_API_KEY` / `HF_TOKEN`) is set, it is used for Hugging Face dataset access. If not set, public datasets are loaded without auth.
 - API rate limits are retried automatically with exponential backoff for both OpenAI schema calls and Hugging Face dataset API calls.
+- Parallel domain execution is bounded by `MAX_PARALLEL_DOMAINS`, and LLM schema analysis is further gated by `LLM_MAX_CONCURRENCY` and `LLM_MIN_INTERVAL_SECONDS`.
+- Hugging Face API access is further gated by `HF_MAX_CONCURRENCY` and `HF_MIN_INTERVAL_SECONDS` to stay under limits during parallel runs.
 - Main output is deduplicated by default (`conversation + reasoning`). To disable: `--no-deduplicate`.
+- Processed datasets are also tracked in `.dataset_registry.json`, so reruns skip the same domain/dataset pair unless it previously failed.
+- If `domains.json` is missing, the pipeline falls back to the legacy `datasets.csv` flow and treats those datasets as `code_generation`.

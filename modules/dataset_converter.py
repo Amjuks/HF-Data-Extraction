@@ -4,12 +4,12 @@ import json
 from typing import Any, Iterable
 
 from modules.schema_agent import SchemaDetection
-from modules.utils import keep_non_empty_strings, normalize_messages, safe_get, to_text
+from modules.utils import keep_non_empty_strings, normalize_language, normalize_messages, safe_get, to_text
 
 
 def _build_user_prompt(row: dict[str, Any], schema: SchemaDetection) -> str:
-    primary = to_text(safe_get(row, schema.user_field))
-    additional_raw = safe_get(row, schema.input_field)
+    primary = to_text(safe_get(row, schema.user_path))
+    additional_raw = safe_get(row, schema.input_path)
     additional = to_text(additional_raw)
     # Drop auxiliary fields that look like vectors/masks/labels instead of prompt context.
     if _is_noisy_aux_field(additional_raw, additional):
@@ -64,23 +64,33 @@ def _build_single_turn_record(
     dataset_id: str,
 ) -> dict[str, Any] | None:
     user_content = _build_user_prompt(row, schema)
-    assistant_content = to_text(safe_get(row, schema.assistant_field))
+    assistant_content = to_text(safe_get(row, schema.assistant_path))
 
     if not user_content or not assistant_content:
         return None
 
-    metadata = {"dataset_id": dataset_id, "source_fields": [schema.user_field, schema.input_field, schema.assistant_field]}
-    for field in schema.metadata_fields:
-        sanitized = _sanitize_metadata_value(row.get(field))
+    language = schema.language
+    if schema.language_path:
+        language = normalize_language(safe_get(row, schema.language_path))
+
+    metadata = {
+        "dataset_id": dataset_id,
+        "task_type": schema.task_type,
+        "language_source": schema.language_path or "schema.language",
+        "source_fields": [schema.user_path, schema.input_path, schema.assistant_path],
+    }
+    for field in schema.metadata_paths:
+        sanitized = _sanitize_metadata_value(safe_get(row, field))
         if sanitized is not None:
             metadata[field] = sanitized
 
-    reasoning = to_text(safe_get(row, schema.reasoning_field)) or None
+    reasoning = to_text(safe_get(row, schema.reasoning_path)) or None
     return {
         "conversation": [
             {"role": "user", "content": user_content},
             {"role": "assistant", "content": assistant_content},
         ],
+        "language": language,
         "reasoning": reasoning,
         "metadata": metadata,
     }
@@ -91,7 +101,15 @@ def _build_multi_turn_record(
     schema: SchemaDetection,
     dataset_id: str,
 ) -> dict[str, Any] | None:
-    conversation = normalize_messages(safe_get(row, schema.messages_field))
+    if schema.message_parse is None:
+        return None
+    raw_messages = safe_get(row, schema.message_parse.messages_path)
+    conversation = normalize_messages(
+        raw_messages,
+        role_path=schema.message_parse.role_path,
+        content_path=schema.message_parse.content_path,
+        role_mapping=schema.message_parse.role_mapping,
+    )
     if len(conversation) < 2:
         return None
     if not any(m["role"] == "assistant" for m in conversation):
@@ -99,15 +117,25 @@ def _build_multi_turn_record(
     if not any(m["role"] == "user" for m in conversation):
         return None
 
-    metadata = {"dataset_id": dataset_id, "source_fields": [schema.messages_field]}
-    for field in schema.metadata_fields:
-        sanitized = _sanitize_metadata_value(row.get(field))
+    language = schema.language
+    if schema.language_path:
+        language = normalize_language(safe_get(row, schema.language_path))
+
+    metadata = {
+        "dataset_id": dataset_id,
+        "task_type": schema.task_type,
+        "language_source": schema.language_path or "schema.language",
+        "source_fields": [schema.message_parse.messages_path],
+    }
+    for field in schema.metadata_paths:
+        sanitized = _sanitize_metadata_value(safe_get(row, field))
         if sanitized is not None:
             metadata[field] = sanitized
 
-    reasoning = to_text(safe_get(row, schema.reasoning_field)) or None
+    reasoning = to_text(safe_get(row, schema.reasoning_path)) or None
     return {
         "conversation": conversation,
+        "language": language,
         "reasoning": reasoning,
         "metadata": metadata,
     }

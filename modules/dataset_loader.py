@@ -6,7 +6,13 @@ from datasets import IterableDataset, get_dataset_config_names, get_dataset_spli
 from loguru import logger
 
 from config import SETTINGS
-from modules.utils import retry
+from modules.utils import RateLimiter, retry
+
+
+_HF_RATE_LIMITER = RateLimiter(
+    max_concurrency=SETTINGS.hf_max_concurrency,
+    min_interval_seconds=SETTINGS.hf_min_interval_seconds,
+)
 
 
 @dataclass
@@ -18,14 +24,15 @@ class DatasetLoadInfo:
 
 
 def _with_optional_token(func, *args, **kwargs):
-    token = SETTINGS.hf_api_key.strip()
-    if not token:
-        return func(*args, **kwargs)
-    try:
-        return func(*args, token=token, **kwargs)
-    except TypeError:
-        # Backward compatibility for older datasets versions.
-        return func(*args, use_auth_token=token, **kwargs)
+    with _HF_RATE_LIMITER.acquire():
+        token = SETTINGS.hf_api_key.strip()
+        if not token:
+            return func(*args, **kwargs)
+        try:
+            return func(*args, token=token, **kwargs)
+        except TypeError:
+            # Backward compatibility for older datasets versions.
+            return func(*args, use_auth_token=token, **kwargs)
 
 
 def _pick_split(dataset_id: str, config_name: str | None) -> str:

@@ -16,6 +16,7 @@ class ParquetDatasetWriter:
         self._schema = pa.schema(
             [
                 ("conversation", pa.string()),
+                ("language", pa.string()),
                 ("reasoning", pa.string()),
                 ("metadata", pa.string()),
                 ("dataset_id", pa.string()),
@@ -42,6 +43,7 @@ class ParquetDatasetWriter:
             batch.append(
                 {
                     "conversation": json.dumps(record.get("conversation", []), ensure_ascii=False),
+                    "language": record.get("language"),
                     "reasoning": record.get("reasoning"),
                     "metadata": json.dumps(metadata, ensure_ascii=False),
                     "dataset_id": metadata.get("dataset_id"),

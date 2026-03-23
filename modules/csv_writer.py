@@ -10,7 +10,7 @@ class CsvWriter:
     def __init__(self, output_path: Path) -> None:
         self.output_path = output_path
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
-        self.fieldnames = ["conversation", "reasoning", "metadata", "dataset_id"]
+        self.fieldnames = ["conversation", "language", "reasoning", "metadata", "dataset_id"]
 
     def append_records(
         self,
@@ -32,6 +32,7 @@ class CsvWriter:
                 writer.writerow(
                     {
                         "conversation": json.dumps(record.get("conversation", []), ensure_ascii=False),
+                        "language": record.get("language"),
                         "reasoning": record.get("reasoning"),
                         "metadata": json.dumps(metadata, ensure_ascii=False),
                         "dataset_id": metadata.get("dataset_id"),

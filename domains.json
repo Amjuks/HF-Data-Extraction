@@ -1,0 +1,19 @@
+{
+  "domains": [
+    {
+      "name": "code_generation",
+      "task_type": "code_generation",
+      "csv_path": "datasets/code.csv"
+    },
+    {
+      "name": "math",
+      "task_type": "math",
+      "csv_path": "datasets/math.csv"
+    },
+    {
+      "name": "natural_language",
+      "task_type": "natural_language",
+      "csv_path": "datasets/nlp.csv"
+    }
+  ]
+}
