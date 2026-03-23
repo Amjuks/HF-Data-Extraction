@@ -1,32 +1,11 @@
 {
-  "HAD653/GSM8K-OpenMath-MathReason-13k": {
-    "math": "added"
-  },
-  "HAD653/OpenMath-Easy-CoT-Verified-120B": {
-    "math": "added"
-  },
-  "MASSJ77/open-dialogue-dataset-5k-sample": {
-    "natural_language": "added"
-  },
-  "Raftico/instructional-dialogues-multilingual": {
-    "natural_language": "skipped"
-  },
-  "allenai/WildChat-4.8M": {
-    "code_generation": "skipped"
-  },
-  "bkai-foundation-models/vi-self-chat-sharegpt-format": {
-    "natural_language": "failed"
-  },
-  "khanhromvn/Atri-QA-Dataset-Vi-100K": {
-    "natural_language": "failed"
-  },
-  "mesolitica/Malaysian-Multiturn-Chat-Assistant": {
+  "MRiabov/dataclaw-march-26": {
     "code_generation": "failed"
   },
-  "mesolitica/Malaysian-SFT": {
-    "code_generation": "failed"
+  "woctordho/dataclaw": {
+    "code_generation": "added"
   },
-  "qingy2024/OCTAL-Math-CoT-47k": {
-    "math": "failed"
+  "woctordho/dataclaw-windows": {
+    "code_generation": "added"
   }
 }

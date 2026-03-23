@@ -6,56 +6,28 @@ from typing import Any, Literal
 
 from loguru import logger
 from openai import OpenAI
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, ValidationError
 
 from config import SETTINGS
-from modules.utils import find_message_path, normalize_language, retry, safe_get
+from modules.utils import RateLimiter, normalize_language, retry
 
 
 TARGET_DOMAINS = {"code_generation", "math", "natural_language"}
 _LLM_RATE_LIMITER = None
-DEFAULT_ROLE_MAPPING = {
-    "human": "user",
-    "user": "user",
-    "prompt": "user",
-    "assistant": "assistant",
-    "model": "assistant",
-    "gpt": "assistant",
-    "bot": "assistant",
-}
-
-
-class MessageParseSpec(BaseModel):
-    messages_path: str
-    role_path: str
-    content_path: str
-    role_mapping: dict[str, str] = Field(default_factory=dict)
 
 
 class SchemaDetection(BaseModel):
     is_target_dataset: bool
     task_type: Literal["code_generation", "math", "natural_language"]
     conversation_type: Literal["single_turn", "multi_turn"] | None = None
-    user_path: str | None = None
-    input_path: str | None = None
-    assistant_path: str | None = None
-    reasoning_path: str | None = None
+    user_field: str | None = None
+    input_field: str | None = None
+    assistant_field: str | None = None
+    messages_field: str | None = None
+    reasoning_field: str | None = None
     language: str = "unknown"
-    language_path: str | None = None
-    metadata_paths: list[str] = Field(default_factory=list)
-    message_parse: MessageParseSpec | None = None
-
-    @model_validator(mode="after")
-    def _validate_shape(self) -> "SchemaDetection":
-        if not self.is_target_dataset:
-            return self
-        if self.conversation_type == "single_turn":
-            if not self.user_path or not self.assistant_path:
-                raise ValueError("single_turn schema requires user_path and assistant_path")
-        if self.conversation_type == "multi_turn" and self.message_parse is None:
-            raise ValueError("multi_turn schema requires message_parse")
-        self.language = normalize_language(self.language)
-        return self
+    language_field: str | None = None
+    metadata_fields: list[str] = Field(default_factory=list)
 
 
 def _try_json_extract(text: str) -> dict[str, Any]:
@@ -75,29 +47,19 @@ def _try_json_extract(text: str) -> dict[str, Any]:
 
 
 def _looks_like_messages(value: Any) -> bool:
-    return find_message_path(value) is not None
-
-
-def _message_spec_from_value(value: Any) -> MessageParseSpec | None:
-    message_path = find_message_path(value)
-    if message_path is None:
-        return None
-    candidate = value if not message_path else safe_get({"root": value}, f"root.{message_path}")
-    if not isinstance(candidate, list) or not candidate:
-        return None
-    first = next((item for item in candidate if isinstance(item, dict)), None)
-    if not isinstance(first, dict):
-        return None
-    role_key = next((key for key in ("role", "from", "speaker") if key in first), None)
-    content_key = next((key for key in ("content", "value", "text") if key in first), None)
-    if not role_key or not content_key:
-        return None
-    return MessageParseSpec(
-        messages_path=message_path,
-        role_path=role_key,
-        content_path=content_key,
-        role_mapping=DEFAULT_ROLE_MAPPING.copy(),
-    )
+    if isinstance(value, str):
+        value = value.strip()
+        if value.startswith("[") or value.startswith("{"):
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                return False
+        else:
+            return False
+    if not isinstance(value, list) or not value:
+        return False
+    first = value[0]
+    return isinstance(first, dict) and any(k in first for k in ("role", "content", "from", "value", "speaker", "text"))
 
 
 def _content_score_as_code(text: str) -> float:
@@ -118,7 +80,6 @@ def _content_score_as_code(text: str) -> float:
         "```",
     ]
     score = sum(1 for marker in code_markers if marker in text)
-    # Dense punctuation and many newlines often indicate code blocks.
     score += text.count("\n") * 0.05
     score += (text.count("{") + text.count("}")) * 0.1
     return score
@@ -143,7 +104,6 @@ def _content_score_as_prompt(text: str) -> float:
     ]
     lower = text.lower()
     score = sum(1 for marker in prompt_markers if marker in lower)
-    # Prefer natural-language instructions over raw code.
     score += 1.0 if lower.count(" ") > 5 else 0.0
     score -= 0.5 if _content_score_as_code(text) > 3 else 0.0
     return score
@@ -153,22 +113,9 @@ def _content_score_as_math(text: str) -> float:
     if not text:
         return 0.0
     lower = text.lower()
-    markers = [
-        "solve",
-        "equation",
-        "proof",
-        "derivative",
-        "integral",
-        "algebra",
-        "geometry",
-        "fraction",
-        "calculate",
-        "simplify",
-        "math",
-    ]
+    markers = ["solve", "equation", "proof", "derivative", "integral", "algebra", "geometry", "calculate", "simplify", "math"]
     score = sum(1 for marker in markers if marker in lower)
     score += sum(1 for ch in text if ch in "=+-*/^") * 0.03
-    score += sum(1 for ch in text if ch.isdigit()) * 0.01
     return score
 
 
@@ -176,19 +123,7 @@ def _content_score_as_natural_language(text: str) -> float:
     if not text:
         return 0.0
     lower = text.lower()
-    markers = [
-        "summarize",
-        "translate",
-        "rewrite",
-        "classify",
-        "answer",
-        "question",
-        "respond",
-        "write",
-        "explain",
-        "article",
-        "story",
-    ]
+    markers = ["summarize", "translate", "rewrite", "classify", "answer", "question", "respond", "write", "explain"]
     score = sum(1 for marker in markers if marker in lower)
     score += 1.0 if lower.count(" ") > 7 else 0.0
     score -= 0.5 if _content_score_as_code(text) > 3 else 0.0
@@ -221,64 +156,53 @@ def _is_candidate_context_column(values: list[str]) -> bool:
     return True
 
 
-def _task_score(text: str, task_type: str) -> float:
+def _task_prompt_score(text: str, task_type: str) -> float:
     if task_type == "code_generation":
-        return _content_score_as_prompt(text) + (_content_score_as_code(text) * 0.25)
+        return _content_score_as_prompt(text)
     if task_type == "math":
         return _content_score_as_math(text)
     return _content_score_as_natural_language(text)
 
 
-def _content_based_schema(
-    columns: list[str],
-    sample_rows: list[dict[str, Any]],
-    task_type: str,
-) -> SchemaDetection:
-    if not columns or not sample_rows:
-        return SchemaDetection(is_target_dataset=False, task_type=task_type)
+def _task_answer_score(text: str, task_type: str) -> float:
+    if task_type == "code_generation":
+        return _content_score_as_code(text)
+    if task_type == "math":
+        return _content_score_as_math(text)
+    return _content_score_as_natural_language(text)
 
-    language_path = None
-    language_value = "unknown"
-    for candidate in columns:
-        if candidate.lower() in {"language", "lang", "locale"}:
+
+def _detect_language(columns: list[str], sample_rows: list[dict[str, Any]]) -> tuple[str, str | None]:
+    for col in columns:
+        if col.lower() in {"language", "lang", "locale"}:
             for row in sample_rows:
                 if not isinstance(row, dict):
                     continue
-                value = row.get(candidate)
+                value = row.get(col)
                 if value is not None:
-                    language_path = candidate
-                    language_value = normalize_language(value)
-                    break
-        if language_path:
-            break
+                    return normalize_language(value), col
+    return "unknown", None
 
-    # 1) Multi-turn detection from sample values, including nested message payloads.
+
+def _content_based_schema(columns: list[str], sample_rows: list[dict[str, Any]], task_type: str) -> SchemaDetection:
+    if not columns or not sample_rows:
+        return SchemaDetection(is_target_dataset=False, task_type=task_type)
+
+    language, language_field = _detect_language(columns, sample_rows)
+
     for col in columns:
         values = [row.get(col) for row in sample_rows if isinstance(row, dict)]
         if values and sum(1 for v in values if _looks_like_messages(v)) >= max(1, len(values) // 2):
-            message_spec = None
-            for value in values:
-                message_spec = _message_spec_from_value(value)
-                if message_spec is not None:
-                    break
-            if message_spec is None:
-                continue
             return SchemaDetection(
                 is_target_dataset=True,
                 task_type=task_type,
                 conversation_type="multi_turn",
-                language=language_value,
-                language_path=language_path,
-                message_parse=MessageParseSpec(
-                    messages_path=col if not message_spec.messages_path else f"{col}.{message_spec.messages_path}",
-                    role_path=message_spec.role_path,
-                    content_path=message_spec.content_path,
-                    role_mapping=message_spec.role_mapping.copy(),
-                ),
-                metadata_paths=[],
+                messages_field=col,
+                language=language,
+                language_field=language_field,
+                metadata_fields=[],
             )
 
-    # 2) Single-turn detection using content statistics (not fixed column names).
     text_scores: dict[str, dict[str, float]] = {}
     col_samples: dict[str, list[str]] = {}
     for col in columns:
@@ -292,44 +216,22 @@ def _content_based_schema(
         if not col_values:
             continue
         col_samples[col] = col_values
-        prompt_score = sum(_task_score(v, task_type) for v in col_values) / len(col_values)
-        code_score = sum(_content_score_as_code(v) for v in col_values) / len(col_values)
-        math_score = sum(_content_score_as_math(v) for v in col_values) / len(col_values)
-        nl_score = sum(_content_score_as_natural_language(v) for v in col_values) / len(col_values)
+        prompt_score = sum(_task_prompt_score(v, task_type) for v in col_values) / len(col_values)
+        answer_score = sum(_task_answer_score(v, task_type) for v in col_values) / len(col_values)
         avg_len = sum(len(v) for v in col_values) / len(col_values)
-        text_scores[col] = {
-            "prompt": prompt_score,
-            "code": code_score,
-            "math": math_score,
-            "natural_language": nl_score,
-            "avg_len": avg_len,
-        }
+        text_scores[col] = {"prompt": prompt_score, "answer": answer_score, "avg_len": avg_len}
 
     if len(text_scores) < 2:
         return SchemaDetection(is_target_dataset=False, task_type=task_type)
 
-    if task_type == "code_generation":
-        assistant_field = max(text_scores, key=lambda c: text_scores[c]["code"])
-        assistant_confidence = text_scores[assistant_field]["code"]
-    elif task_type == "math":
-        assistant_field = max(text_scores, key=lambda c: text_scores[c]["math"])
-        assistant_confidence = text_scores[assistant_field]["math"]
-    else:
-        assistant_field = max(text_scores, key=lambda c: text_scores[c]["natural_language"])
-        assistant_confidence = text_scores[assistant_field]["natural_language"]
-    user_field = max(
-        (c for c in text_scores if c != assistant_field),
-        key=lambda c: text_scores[c]["prompt"],
-        default=None,
-    )
+    assistant_field = max(text_scores, key=lambda c: text_scores[c]["answer"])
+    user_field = max((c for c in text_scores if c != assistant_field), key=lambda c: text_scores[c]["prompt"], default=None)
     if not user_field:
         return SchemaDetection(is_target_dataset=False, task_type=task_type)
 
-    # Weak confidence guard.
-    if assistant_confidence < 0.8 or text_scores[user_field]["prompt"] < 0.8:
+    if text_scores[assistant_field]["answer"] < 0.8 or text_scores[user_field]["prompt"] < 0.8:
         return SchemaDetection(is_target_dataset=False, task_type=task_type)
 
-    # Optional secondary context: second-best prompt column.
     prompt_ranked = sorted(
         [c for c in text_scores if c != user_field and c != assistant_field],
         key=lambda c: text_scores[c]["prompt"],
@@ -345,12 +247,12 @@ def _content_based_schema(
         is_target_dataset=True,
         task_type=task_type,
         conversation_type="single_turn",
-        user_path=user_field,
-        input_path=input_field,
-        assistant_path=assistant_field,
-        language=language_value,
-        language_path=language_path,
-        metadata_paths=[],
+        user_field=user_field,
+        input_field=input_field,
+        assistant_field=assistant_field,
+        language=language,
+        language_field=language_field,
+        metadata_fields=[],
     )
 
 
@@ -361,8 +263,6 @@ class SchemaAgent:
         if SETTINGS.llm_api_key:
             self.client = OpenAI(api_key=SETTINGS.llm_api_key, base_url=SETTINGS.llm_base_url)
         if _LLM_RATE_LIMITER is None:
-            from modules.utils import RateLimiter
-
             _LLM_RATE_LIMITER = RateLimiter(
                 max_concurrency=SETTINGS.llm_max_concurrency,
                 min_interval_seconds=SETTINGS.llm_min_interval_seconds,
@@ -387,38 +287,30 @@ class SchemaAgent:
             "columns": columns,
             "sample_rows": sample_rows[: min(len(sample_rows), 8)],
             "task": (
-                "Determine if this dataset is relevant to the requested task type and map fields to the unified conversation schema."
-                " Multi-turn conversations may be nested inside objects such as conversations/messages/chats."
-                " Return ONLY valid JSON."
+                "Look at the sample rows and determine whether this dataset matches the requested task type. "
+                "Then decide whether conversion is a simple top-level column mapping or a single top-level column containing a list of chat messages. "
+                "Return ONLY valid JSON."
             ),
             "expected_json_schema": {
                 "is_target_dataset": "boolean",
                 "task_type": "code_generation | math | natural_language",
                 "conversation_type": "single_turn | multi_turn | null",
-                "user_path": "string | null",
-                "input_path": "string | null",
-                "assistant_path": "string | null",
-                "reasoning_path": "string | null",
-                "language": "normalized lowercase language name such as english | hindi | spanish | multilingual | unknown",
-                "language_path": "string | null",
-                "metadata_paths": "string[]",
-                "message_parse": {
-                    "messages_path": "string",
-                    "role_path": "string",
-                    "content_path": "string",
-                    "role_mapping": {"<raw-role>": "user | assistant"}
-                },
+                "user_field": "string | null",
+                "input_field": "string | null",
+                "assistant_field": "string | null",
+                "messages_field": "string | null",
+                "reasoning_field": "string | null",
+                "language": "string",
+                "language_field": "string | null",
+                "metadata_fields": "string[]",
             },
         }
 
         system_prompt = (
-            "You are a strict dataset schema analyzer. Decide mapping by dataset content, not column names alone. "
+            "You are a strict dataset schema analyzer. Keep the mapping simple and only use top-level fields. "
             f"Only classify as relevant if the dataset primarily matches the target task type '{task_type}'. "
-            "Arbitrary top-level keys and nested JSON keys are allowed. "
-            "Return an exact parse specification using dot paths from the row root. "
-            "For multi_turn datasets, message_parse.messages_path must point to the exact list of message objects, and role_path/content_path must be relative to each message object. "
-            "Always return a normalized human-language label in lowercase English words, for example english, hindi, spanish, multilingual, or unknown. "
-            "If language varies row-by-row, return language_path as the exact dot path and still normalize the language values to that same format at extraction time. "
+            "If one top-level field contains chat messages, use conversation_type='multi_turn' and set messages_field to that field. "
+            "Otherwise map top-level prompt/response fields for conversation_type='single_turn'. "
             "Return JSON only; no markdown."
         )
 
@@ -432,42 +324,25 @@ class SchemaAgent:
             ).strip()
             parsed = _try_json_extract(text)
             schema = SchemaDetection.model_validate(parsed)
+            schema.language = normalize_language(schema.language)
             if not schema.is_target_dataset:
                 return schema
             if schema.task_type != task_type:
                 raise ValueError(f"LLM returned mismatched task_type '{schema.task_type}' for requested '{task_type}'")
-            if schema.conversation_type == "single_turn":
-                for row in sample_rows:
-                    if not isinstance(row, dict):
-                        continue
-                    if safe_get(row, schema.user_path) is not None and safe_get(row, schema.assistant_path) is not None:
-                        break
-                else:
-                    raise ValueError("single_turn paths not found in sample rows")
-            if schema.conversation_type == "multi_turn" and schema.message_parse is not None:
-                for row in sample_rows:
-                    if not isinstance(row, dict):
-                        continue
-                    messages = safe_get(row, schema.message_parse.messages_path)
-                    if isinstance(messages, str):
-                        try:
-                            messages = json.loads(messages)
-                        except json.JSONDecodeError:
-                            pass
-                    if isinstance(messages, list) and messages:
-                        first = next((item for item in messages if isinstance(item, dict)), None)
-                        if first and safe_get(first, schema.message_parse.role_path) is not None and safe_get(first, schema.message_parse.content_path) is not None:
-                            break
-                else:
-                    raise ValueError(f"multi_turn parse spec not found in sample rows: {schema.message_parse.messages_path}")
-            if schema.language_path:
-                for row in sample_rows:
-                    if not isinstance(row, dict):
-                        continue
-                    if safe_get(row, schema.language_path) is not None:
-                        break
-                else:
-                    raise ValueError(f"language_path not found in sample rows: {schema.language_path}")
+            if schema.conversation_type == "single_turn" and not (schema.user_field and schema.assistant_field):
+                logger.warning(f"[{dataset_id}] Invalid single_turn mapping from LLM. Falling back to content-based detection.")
+                return _content_based_schema(columns, sample_rows, task_type)
+            if schema.conversation_type == "multi_turn" and not schema.messages_field:
+                logger.warning(f"[{dataset_id}] Invalid multi_turn mapping from LLM. Falling back to content-based detection.")
+                return _content_based_schema(columns, sample_rows, task_type)
+            if schema.user_field and schema.user_field not in columns:
+                raise ValueError(f"user_field not in dataset columns: {schema.user_field}")
+            if schema.assistant_field and schema.assistant_field not in columns:
+                raise ValueError(f"assistant_field not in dataset columns: {schema.assistant_field}")
+            if schema.messages_field and schema.messages_field not in columns:
+                raise ValueError(f"messages_field not in dataset columns: {schema.messages_field}")
+            if schema.language_field and schema.language_field not in columns:
+                raise ValueError(f"language_field not in dataset columns: {schema.language_field}")
             return schema
         except (json.JSONDecodeError, ValidationError, Exception) as exc:  # noqa: BLE001
             logger.warning(f"[{dataset_id}] Schema inference failed: {exc}. Falling back to content-based detection.")
@@ -479,8 +354,11 @@ class SchemaAgent:
         assert _LLM_RATE_LIMITER is not None
 
         with _LLM_RATE_LIMITER.acquire():
-            # Newer OpenAI SDK interface.
-            if hasattr(self.client, "responses"):
+            use_chat_completions = SETTINGS.llm_use_chat_completions or bool(
+                SETTINGS.llm_base_url and "sglang" in SETTINGS.llm_base_url.lower()
+            )
+
+            if hasattr(self.client, "responses") and not use_chat_completions:
                 response = self.client.responses.create(
                     model=SETTINGS.model_name,
                     input=[
@@ -488,20 +366,20 @@ class SchemaAgent:
                         {"role": "user", "content": user_content},
                     ],
                     temperature=0,
-                    max_output_tokens=500,
+                    max_output_tokens=400,
                 )
                 return response.output_text
 
-            # Backward-compatible fallback for older OpenAI SDKs.
             completion = self.client.chat.completions.create(
                 model=SETTINGS.model_name,
                 messages=[
+                    {"role": "system", "content": SETTINGS.llm_reasoning_hint},
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
                 ],
                 temperature=0,
-                max_tokens=500,
-                response_format={"type": "json_object"},
+                max_tokens=400,
+                extra_body={"chat_template_kwargs": {"enable_thinking": SETTINGS.llm_enable_thinking}},
             )
             content = completion.choices[0].message.content
             return content or "{}"

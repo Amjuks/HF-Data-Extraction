@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import threading
 import time
 from contextlib import contextmanager
@@ -242,16 +243,69 @@ def retry(
             return func(*args, **kwargs)
         except Exception as exc:  # noqa: BLE001
             last_error = exc
-            msg = str(exc).lower()
-            is_rate_limited = "rate limit" in msg or "too many requests" in msg or "429" in msg
+            is_rate_limited = is_rate_limit_error(exc)
             reason = "rate-limited" if is_rate_limited else "failed"
             logger.warning(f"Attempt {attempt}/{retries} {reason}: {exc}")
             if attempt < retries:
                 delay = backoff_seconds * (2 ** (attempt - 1))
                 if is_rate_limited:
                     delay *= 2
+                    retry_after = extract_retry_after_seconds(exc)
+                    if retry_after is not None:
+                        delay = max(delay, retry_after)
                 delay += random.uniform(0, 0.3)
                 time.sleep(delay)
     if last_error is not None:
         raise last_error
+
+
+def is_rate_limit_error(exc: Exception | str) -> bool:
+    msg = str(exc).lower()
+    return (
+        "rate limit" in msg
+        or "too many requests" in msg
+        or "429" in msg
+        or "we had to rate limit your ip" in msg
+    )
+
+
+def is_hf_token_required_error(exc: Exception | str) -> bool:
+    msg = str(exc).lower()
+    return "pass a hf_token" in msg or "login to your existing account" in msg
+
+
+def is_feature_schema_unsupported_error(exc: Exception | str) -> bool:
+    msg = str(exc)
+    return "Feature type 'Json' not found" in msg or "Available feature types" in msg
+
+
+def extract_retry_after_seconds(exc: Exception | str) -> float | None:
+    candidates = [
+        getattr(exc, "response", None),
+        getattr(exc, "__cause__", None),
+    ]
+    for candidate in candidates:
+        headers = getattr(candidate, "headers", None)
+        if headers:
+            retry_after = headers.get("Retry-After") or headers.get("retry-after")
+            if retry_after:
+                try:
+                    return max(0.0, float(retry_after))
+                except ValueError:
+                    pass
+
+    msg = str(exc)
+    patterns = [
+        r"retry[- ]after[:=]\s*([0-9]+(?:\.[0-9]+)?)",
+        r"Retry-After[:=]\s*([0-9]+(?:\.[0-9]+)?)",
+        r"please try again in\s*([0-9]+(?:\.[0-9]+)?)\s*(seconds?|secs?|s)\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, msg, flags=re.IGNORECASE)
+        if match:
+            try:
+                return max(0.0, float(match.group(1)))
+            except ValueError:
+                continue
+    return None
 

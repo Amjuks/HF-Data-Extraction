@@ -17,7 +17,7 @@ from modules.csv_reader import normalize_hf_dataset_link, read_dataset_ids, read
 from modules.csv_writer import CsvWriter
 from modules.dataset_classifier import is_relevant_dataset
 from modules.dataset_converter import convert_rows
-from modules.dataset_loader import inspect_dataset, load_dataset_stream
+from modules.dataset_loader import DatasetDeferredError, inspect_dataset, load_dataset_stream
 from modules.parquet_writer import ParquetDatasetWriter
 from modules.run_logger import PipelineRunLogger
 from modules.sample_extractor import extract_columns_and_samples
@@ -55,6 +55,12 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="JSON config describing one or more domains and their dataset IDs.",
     )
+    parser.add_argument(
+        "--domains",
+        nargs="+",
+        default=None,
+        help="Optional list of domain names to process. Example: --domains code_generation math",
+    )
     return parser.parse_args()
 
 
@@ -71,6 +77,10 @@ def _checkpoint_path(root: Path, name: str) -> Path:
 
 def _dataset_registry_path(root: Path) -> Path:
     return root / ".dataset_registry.json"
+
+
+def _summary_path(root: Path, progress_name: str) -> Path:
+    return _suffix_path(root / "pipeline_summary.json", progress_name)
 
 
 def _load_checkpoint(path: Path) -> set[str]:
@@ -145,6 +155,17 @@ def _load_pipeline_domains(root: Path, domains_config_arg: str | None) -> list[D
     )
     dataset_ids = read_dataset_ids(csv_path)
     return [DomainPipelineConfig(name="code_generation", task_type="code_generation", dataset_ids=dataset_ids)]
+
+
+def _filter_domains(domains: list[DomainPipelineConfig], selected_names: list[str] | None) -> list[DomainPipelineConfig]:
+    if not selected_names:
+        return domains
+    selected = {name.strip().lower() for name in selected_names if name.strip()}
+    filtered = [domain for domain in domains if domain.name.strip().lower() in selected]
+    missing = sorted(selected - {domain.name.strip().lower() for domain in filtered})
+    if missing:
+        raise ValueError(f"Requested domain(s) not found in configuration: {', '.join(missing)}")
+    return filtered
 
 
 class DatasetRegistry:
@@ -274,6 +295,11 @@ def _process_domain(
     total_written = 0
     total_duplicates_filtered = 0
     duplicate_datasets_skipped = 0
+    datasets_started = 0
+    datasets_added = 0
+    datasets_skipped = 0
+    datasets_deferred = 0
+    datasets_failed = 0
     max_rows = domain.max_rows_per_dataset if domain.max_rows_per_dataset is not None else SETTINGS.max_rows_per_dataset
     try:
         for dataset_id in domain.dataset_ids:
@@ -282,6 +308,7 @@ def _process_domain(
                 continue
             if dataset_registry.should_skip(domain.name, dataset_id):
                 duplicate_datasets_skipped += 1
+                datasets_skipped += 1
                 logger.info(f"[{domain.name}::{dataset_id}] skipped: already tracked as processed for this domain.")
                 run_logger.log(
                     domain=domain.name,
@@ -292,6 +319,7 @@ def _process_domain(
                 )
                 continue
             if dataset_id in processed_ids:
+                datasets_skipped += 1
                 logger.info(f"[{domain.name}::{dataset_id}] skipped: already processed in resume state.")
                 run_logger.log(
                     domain=domain.name,
@@ -304,6 +332,7 @@ def _process_domain(
                 continue
             info = None
             try:
+                datasets_started += 1
                 run_logger.log(
                     domain=domain.name,
                     dataset_id=dataset_id,
@@ -311,7 +340,7 @@ def _process_domain(
                     message=f"Dataset processing started for domain {domain.name}",
                 )
                 info = inspect_dataset(dataset_id)
-                sample_stream = load_dataset_stream(dataset_id, info.config_name, info.split_name)
+                sample_stream = load_dataset_stream(dataset_id, info.config_name, info.split_names)
                 columns, samples = extract_columns_and_samples(sample_stream, SETTINGS.max_sample_rows)
                 if not columns:
                     columns = info.columns
@@ -323,6 +352,7 @@ def _process_domain(
                     sample_rows=samples,
                 )
                 if not is_relevant_dataset(schema):
+                    datasets_skipped += 1
                     msg = f"Skipped: dataset not relevant for domain '{domain.task_type}'."
                     logger.info(f"[{domain.name}::{dataset_id}] {msg}")
                     run_logger.log(
@@ -330,7 +360,7 @@ def _process_domain(
                         dataset_id=dataset_id,
                         status="skipped",
                         config_name=info.config_name,
-                        split_name=info.split_name,
+                        split_name=",".join(info.split_names),
                         records_written=0,
                         message=msg,
                     )
@@ -343,7 +373,7 @@ def _process_domain(
                     f"[{domain.name}::{dataset_id}] converting rows for task={domain.task_type} "
                     f"(limit={limit_display}) and appending to {mode_label}..."
                 )
-                convert_stream = load_dataset_stream(dataset_id, info.config_name, info.split_name)
+                convert_stream = load_dataset_stream(dataset_id, info.config_name, info.split_names)
                 records = convert_rows(
                     rows=convert_stream,
                     schema=schema,
@@ -380,27 +410,42 @@ def _process_domain(
 
                 total_written += written
                 total_duplicates_filtered += duplicates_filtered
+                datasets_added += 1
                 logger.info(f"[{domain.name}::{dataset_id}] wrote {written} normalized rows.")
                 run_logger.log(
                     domain=domain.name,
                     dataset_id=dataset_id,
                     status="added",
                     config_name=info.config_name,
-                    split_name=info.split_name,
+                    split_name=",".join(info.split_names),
                     records_written=written,
                     message=f"Dataset converted and appended. Duplicates filtered: {duplicates_filtered}",
                 )
                 processed_ids.add(dataset_id)
                 _save_checkpoint(checkpoint_path, processed_ids)
                 dataset_registry.mark(domain.name, dataset_id, "added")
+            except DatasetDeferredError as exc:
+                datasets_deferred += 1
+                logger.warning(f"[{domain.name}::{dataset_id}] deferred: {exc}")
+                run_logger.log(
+                    domain=domain.name,
+                    dataset_id=dataset_id,
+                    status="deferred",
+                    config_name=info.config_name if info else None,
+                    split_name=",".join(info.split_names) if info else None,
+                    records_written=0,
+                    message=str(exc),
+                    error=getattr(exc, "reason", "deferred"),
+                )
             except Exception as exc:  # noqa: BLE001
+                datasets_failed += 1
                 logger.exception(f"[{domain.name}::{dataset_id}] failed and skipped: {exc}")
                 run_logger.log(
                     domain=domain.name,
                     dataset_id=dataset_id,
                     status="failed",
                     config_name=info.config_name if info else None,
-                    split_name=info.split_name if info else None,
+                    split_name=",".join(info.split_names) if info else None,
                     records_written=0,
                     message="Dataset failed during processing",
                     error=str(exc),
@@ -422,6 +467,12 @@ def _process_domain(
         "written": total_written,
         "duplicates_filtered": total_duplicates_filtered,
         "duplicate_datasets_skipped": duplicate_datasets_skipped,
+        "datasets_total": len(domain.dataset_ids),
+        "datasets_started": datasets_started,
+        "datasets_added": datasets_added,
+        "datasets_skipped": datasets_skipped,
+        "datasets_deferred": datasets_deferred,
+        "datasets_failed": datasets_failed,
         "csv_path": str(output_csv_path),
         "parquet_path": str(output_parquet_path),
         "run_log_path": str(run_log_path),
@@ -436,7 +487,7 @@ def run() -> None:
     progress_name = args.resume if args.resume is not None else args.progress_name
     output_mode: Literal["csv", "parquet", "both"] = args.output_format or "csv"
     enable_dedup = not args.no_deduplicate
-    domains = _load_pipeline_domains(root, args.domains_config)
+    domains = _filter_domains(_load_pipeline_domains(root, args.domains_config), args.domains)
     dataset_registry = DatasetRegistry(_dataset_registry_path(root))
 
     if args.output_format is None:
@@ -444,6 +495,8 @@ def run() -> None:
     logger.info(f"Output mode selected: {output_mode}")
     logger.info(f"Progress name: {progress_name}")
     logger.info(f"Loaded {len(domains)} domain configuration(s).")
+    if args.domains:
+        logger.info(f"Selected domain filter: {', '.join(args.domains)}")
 
     if not any(domain.dataset_ids for domain in domains):
         logger.warning("No dataset IDs found in domain configuration. Exiting.")
@@ -483,10 +536,32 @@ def run() -> None:
     total_written = sum(int(result["written"]) for result in results)
     total_duplicates_filtered = sum(int(result["duplicates_filtered"]) for result in results)
     total_duplicate_datasets_skipped = sum(int(result["duplicate_datasets_skipped"]) for result in results)
+    total_datasets = sum(int(result["datasets_total"]) for result in results)
+    total_datasets_added = sum(int(result["datasets_added"]) for result in results)
+    total_datasets_skipped = sum(int(result["datasets_skipped"]) for result in results)
+    total_datasets_deferred = sum(int(result["datasets_deferred"]) for result in results)
+    total_datasets_failed = sum(int(result["datasets_failed"]) for result in results)
     logger.info(f"Done. Total normalized records written across domains: {total_written}")
     if enable_dedup:
         logger.info(f"Duplicates filtered across domains: {total_duplicates_filtered}")
     logger.info(f"Duplicate datasets skipped from registry/resume tracking: {total_duplicate_datasets_skipped}")
+    summary = {
+        "progress_name": progress_name,
+        "totals": {
+            "domains": len(results),
+            "datasets_total": total_datasets,
+            "datasets_added": total_datasets_added,
+            "datasets_skipped": total_datasets_skipped,
+            "datasets_deferred": total_datasets_deferred,
+            "datasets_failed": total_datasets_failed,
+            "duplicate_datasets_skipped": total_duplicate_datasets_skipped,
+            "records_written": total_written,
+            "record_duplicates_filtered": total_duplicates_filtered,
+        },
+        "domains": results,
+    }
+    summary_path = _summary_path(root, progress_name)
+    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     for result in results:
         if output_mode in {"csv", "both"}:
             logger.info(f"[{result['domain']}] CSV output file: {result['csv_path']}")
@@ -494,6 +569,7 @@ def run() -> None:
             logger.info(f"[{result['domain']}] Parquet output file: {result['parquet_path']}")
         logger.info(f"[{result['domain']}] Progress log file: {result['run_log_path']}")
         logger.info(f"[{result['domain']}] Checkpoint file: {result['checkpoint_path']}")
+    logger.info(f"Summary file: {summary_path}")
 
 
 if __name__ == "__main__":
