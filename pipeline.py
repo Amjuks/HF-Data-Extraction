@@ -7,6 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 import threading
+import sys
 from typing import Literal
 
 import pyarrow.parquet as pq
@@ -23,6 +24,16 @@ from modules.run_logger import PipelineRunLogger
 from modules.sample_extractor import extract_columns_and_samples
 from modules.schema_agent import SchemaAgent
 from modules.utils import setup_logging
+
+
+def _configure_csv_field_limit() -> None:
+    limit = sys.maxsize
+    while True:
+        try:
+            csv.field_size_limit(limit)
+            return
+        except OverflowError:
+            limit //= 10
 
 
 def _parse_args() -> argparse.Namespace:
@@ -482,6 +493,7 @@ def _process_domain(
 
 def run() -> None:
     args = _parse_args()
+    _configure_csv_field_limit()
     setup_logging()
     root = Path(__file__).resolve().parent
     progress_name = args.resume if args.resume is not None else args.progress_name
