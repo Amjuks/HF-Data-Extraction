@@ -1,0 +1,87 @@
+model_name,count,percentage
+claude-opus-4-6,17,9.24
+gemini-2.0-flash-thinking-exp-1219,12,6.52
+ChatGPT-3.5,12,6.52
+GPT-4 Turbo,11,5.98
+ChatGPT-4,5,2.72
+gpt-5.3-codex,5,2.72
+GPT-4o,5,2.72
+ChatGPT,5,2.72
+gemini-2.0-flash-exp,4,2.17
+Claude,4,2.17
+Llama-3.1-Tulu-3-70B,4,2.17
+tngtech/DeepSeek-TNG-R1T2-Chimera,4,2.17
+claude-opus-4-5-20251101,3,1.63
+gpt-4o,3,1.63
+gpt-4,3,1.63
+GLM-4.5-Air,3,1.63
+ChatGPT3.5,3,1.63
+gemini-exp-1206,3,1.63
+GPT-4,2,1.09
+gemini-2.0-flash,2,1.09
+Claude Opus,2,1.09
+Meta Llama 3.3 70B Instruct,2,1.09
+Llama-3.1-Tulu-3-8B,2,1.09
+ChatGPT4,2,1.09
+GLM-4.6,2,1.09
+allenai/Llama-3.1-Tulu-3-8B,2,1.09
+Iker/TowerInstruct-13B-v0.1-EN2ES,2,1.09
+EpistemeAI/Fireball-Meta-Llama-3.1-8B-Instruct-Agent-0.003-128K-code,2,1.09
+"claude-opus-4-5-20251101, claude-opus-4-6",1,0.54
+claude-sonnet-4-6,1,0.54
+Orca-3-Mistral,1,0.54
+FreedomIntelligence/HuatuoGPT-o1-72B,1,0.54
+Gemini 2.0 Flash,1,0.54
+deepseek/deepseek-v3.2,1,0.54
+ARM-Thinker,1,0.54
+davinci,1,0.54
+llama3-405b,1,0.54
+EpistemeAI/Fireball-Meta-Llama-3.1-8B-Instruct-Agent-0.004-128K-code-COT,1,0.54
+EpistemeAI/Fireball-Meta-Llama-3.1-8B-Instruct-Agent-0.003-128K-code-ds-auto,1,0.54
+EpistemeAI/Fireball-Meta-Llama-3.1-8B-Instruct-Agent-0.004-128K-code-ds-auto,1,0.54
+EpistemeAI/Polypsyche-Llama-3.1-8B-Instruct-Agent-0.003-128K-code-ds-auto-Logic,1,0.54
+EpistemeAI/Polypsyche-Llama-3.1-8B-Instruct-Agent-0.003-128K-code-ds-auto-divergent,1,0.54
+EpistemeAI2/Fireball-Meta-Llama-3.1-8B-Instruct-Agent-0.003-128K-code-math,1,0.54
+EpistemeAI/Polypsyche-Llama-3.1-8B-Instruct-Agent-0.003-128K-code-ds-auto-Empathy,1,0.54
+EpistemeAI/Fireball-Meta-Llama-3.2-8B-Instruct-agent-003-128k-code-DPO,1,0.54
+EpistemeAI/Fireball-Meta-Llama-3.1-8B-Instruct-Agent-0.003-128K-code-ds,1,0.54
+InstructGPT,1,0.54
+Tachibana2-DeepSeek-R1-PREVIEW,1,0.54
+EpistemeAI2/Fireball-Meta-Llama-3.1-8B-Instruct-Agent-0.005-128K-code-COT,1,0.54
+ChatGPT-3,1,0.54
+GPT-5,1,0.54
+Azure GPT-4 Turbo,1,0.54
+gpt-4.1-2025-04-14,1,0.54
+Llama-3.1-405B-Instruct-FP8,1,0.54
+Olmo-3-7B-Think,1,0.54
+claude-opus-4,1,0.54
+Claude Sonnet 4.6,1,0.54
+OLMo-2-0325-32B-DPO,1,0.54
+Qwen/QwQ-32B,1,0.54
+LGAI-EXAONE/EXAONE-Deep-32B,1,0.54
+o4-mini,1,0.54
+gemini-2.0-flash-thinking,1,0.54
+GPT-4-0613,1,0.54
+Llama 2,1,0.54
+GPT-3,1,0.54
+Llama-3.1-405B-Instruct,1,0.54
+Google Speech-to-Text,1,0.54
+Tulu 2.5,1,0.54
+gemini-2.0-thinking,1,0.54
+gpt-4-0613,1,0.54
+Olmo 3 7B Instruct SFT,1,0.54
+NobodyExistsOnTheInternet/code-llama-70b-python-instruct,1,0.54
+gemini-1.5-flash,1,0.54
+Olmo 3 Instruct 7B,1,0.54
+default,1,0.54
+bartowski/Qwen_QwQ-32B-GGUF/Qwen_QwQ-32B-Q4_K_S.gguf,1,0.54
+gpt-4o-mini,1,0.54
+gpt-4o-2024-08-06,1,0.54
+GPT-4.1,1,0.54
+text-davinci-003,1,0.54
+PaLM-2-L,1,0.54
+Mixtral Instruct,1,0.54
+anthropic/claude-4.5-sonnet,1,0.54
+LLaMA,1,0.54
+Llama 3.1 70B Instruct,1,0.54
+Claude-Sonnet,1,0.54

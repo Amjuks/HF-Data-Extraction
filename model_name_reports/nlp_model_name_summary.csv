@@ -1,0 +1,113 @@
+model_name,count,percentage
+ChatGPT,31,12.65
+GPT-4,28,11.43
+GPT-4o,13,5.31
+gpt-3.5-turbo,13,5.31
+GPT-4 Turbo,7,2.86
+Claude,5,2.04
+GPT-4V,5,2.04
+gpt-4,5,2.04
+text-davinci-003,4,1.63
+gpt-4o-mini,4,1.63
+GPT4-Vision,4,1.63
+gemini-2.0-flash-exp,4,1.63
+gemini-exp-1206,3,1.22
+gpt-3.5,3,1.22
+GPT-3.5,3,1.22
+Claude 3 Opus,3,1.22
+GPT-3,3,1.22
+GPT-4 Vision,3,1.22
+Gemini 2.5 Flash,3,1.22
+Claude-3-Opus,2,0.82
+ChatGPT Turbo,2,0.82
+Llama-3.1-405B-Instruct,2,0.82
+LLaMA,2,0.82
+Llama-3.1-Tulu-3-8B,2,0.82
+GPT-3.5-Turbo,2,0.82
+claude-3-7-sonnet-16k,2,0.82
+Llama-3.1-70B-Instruct,2,0.82
+Qwen3-VL-235B-Thinking,1,0.41
+gpt-4-1106-preview,1,0.41
+InstructGPT,1,0.41
+OpenAI ChatGPT (GPT-3.5),1,0.41
+gpt-4.1-2025-04-14,1,0.41
+GPT-3.5 turbo,1,0.41
+Llama-3.1-405B-Instruct-FP8,1,0.41
+Llama Instruct 3.1 70b,1,0.41
+meta-llama/Meta-Llama-3.1-8B-Instruct,1,0.41
+GPT-3.5 Turbo,1,0.41
+gemini-pro,1,0.41
+mistral-medium,1,0.41
+GEITje 7B Ultra (SFT),1,0.41
+GPT-3.5-turbo,1,0.41
+Guanaco,1,0.41
+Gemini 2.0 Flash,1,0.41
+Llama-3.1-8B-Instruct,1,0.41
+Meta-Llama-3.1-8B-Instruct,1,0.41
+"Claude, ChatGPT-4o",1,0.41
+Gemma 3 27B,1,0.41
+gemini-2.0-flash,1,0.41
+Olmo 3 7B Instruct SFT,1,0.41
+gpt-5-nano,1,0.41
+Gemini,1,0.41
+gemini-2.0-flash-thinking-exp-1219,1,0.41
+Gemini-1.5-Flash-Latest,1,0.41
+mistralai/Mixtral-8x22B-Instruct-v0.1,1,0.41
+gpt-4-0125-preview,1,0.41
+Qwen/Qwen2.5-72B-Instruct-GPTQ-Int8,1,0.41
+lianghsun/Llama-3.2-Taiwan-3B-Instruct,1,0.41
+Llama 3.1,1,0.41
+Sonnet-3.5-new,1,0.41
+R1,1,0.41
+gpt-3,1,0.41
+GPT-4.1,1,0.41
+DeepSeek-R1,1,0.41
+OpenAI GPT-3.5,1,0.41
+HuatuoGPT,1,0.41
+Olmo 3 Instruct 7B,1,0.41
+gpt-4-0613,1,0.41
+"Claude, GPT-4o mini",1,0.41
+Claude-Sonnet,1,0.41
+Molmo2,1,0.41
+yihan6324/llama2-13b-instructmining-40k-sharegpt,1,0.41
+wahaha1987/llama_13b_sharegpt94k_fastchat,1,0.41
+LLaMA 3.2 3B Instruct,1,0.41
+ChatDoctor,1,0.41
+davinci,1,0.41
+Claude 3.5 Sonnet,1,0.41
+ChatGPT-5,1,0.41
+Olmo3-RL-Zero-7B-General,1,0.41
+Llama-2-7b-chat-hf,1,0.41
+Orca-3-Mistral,1,0.41
+GPT-4o and Claude 3.5 Sonnet,1,0.41
+Olmo-3-7B-RL-Zero-Mix,1,0.41
+Qwen3.5-35b-a3b,1,0.41
+claude-3-5-sonnet-20240620,1,0.41
+Claude Sonnet 3.5,1,0.41
+gemini-1.5-flash,1,0.41
+Gemini-Pro,1,0.41
+Llama 2,1,0.41
+baichuan2,1,0.41
+FLAN-PaLM 540B,1,0.41
+Azure GPT-4 Turbo,1,0.41
+Online-A-1710,1,0.41
+GPT-4o-0806,1,0.41
+gpt-4o,1,0.41
+MolmoPoint-GUI-8B,1,0.41
+Llama-3-8B-Instruct,1,0.41
+smoltalk_everyday_convs_reasoning_Qwen3_32B_think,1,0.41
+Llama-3-70B-Instruct,1,0.41
+Google Gemini 2.5 Flash,1,0.41
+DeepSeek-R1-32b,1,0.41
+Llama-3.1-Tulu-3-70B,1,0.41
+allenai/Llama-3.1-Tulu-3-70B,1,0.41
+gpt-4.1,1,0.41
+gpt-4o-2024-08-06,1,0.41
+GPT-4o mini,1,0.41
+llama-2-70b,1,0.41
+BARD,1,0.41
+meta-llama/Meta-Llama-3-70B-Instruct,1,0.41
+TheBloke/OpenAssistant-SFT-7-Llama-30B-HF,1,0.41
+OpenAssistant/llama2-70b-oasst-sft-v10,1,0.41
+OpenAssistant/llama2-13b-orca-v2-8k-3166,1,0.41
+llama3-405b,1,0.41
