@@ -22,8 +22,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-# Increase CSV field limit to handle large conversation JSON
-csv.field_size_limit(int(1e8))
+# Increase CSV field limit to handle very large conversation JSON
+# Try progressively until we find a working limit
+try:
+    csv.field_size_limit(2**31 - 1)  # Maximum int32 value
+except (OverflowError, AttributeError):
+    try:
+        csv.field_size_limit(int(1e9))  # 1 billion
+    except (OverflowError, AttributeError):
+        csv.field_size_limit(int(1e8))  # 100 million
 
 
 @dataclass
